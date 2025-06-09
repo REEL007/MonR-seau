@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}Amis{% endblock %}
+
+{% block content %}
+    <div class="friends-container">
+        <section class="friends-list">
+            <h2>Vos amis ({{ friends|length }})</h2>
+            {% if friends %}
+                <ul>
+                    {% for friend in friends %}
+                        <li>
+                            <a href="{{ url_for('messages', friend_id=friend.id) }}">{{ friend.username }}</a>
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p>Vous n'avez pas encore d'amis.</p>
+            {% endif %}
+        </section>
+
+        <section class="sent-requests">
+            <h2>Demandes envoyées ({{ sent_requests|length }})</h2>
+            {% if sent_requests %}
+                <ul>
+                    {% for request in sent_requests %}
+                        <li>{{ request.username }} (en attente)</li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p>Aucune demande envoyée.</p>
+            {% endif %}
+        </section>
+
+        <section class="received-requests">
+            <h2>Demandes reçues ({{ received_requests|length }})</h2>
+            {% if received_requests %}
+                <ul>
+                    {% for request in received_requests %}
+                        <li>
+                            {{ request.username }}
+                            <a href="{{ url_for('accept_friend', friend_id=request.id) }}" class="btn">Accepter</a>
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p>Aucune demande reçue.</p>
+            {% endif %}
+        </section>
+    </div>
+{% endblock %}

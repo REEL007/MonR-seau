@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}Recherche{% endblock %}
+
+{% block content %}
+    <form method="POST" class="search-form">
+        <h2>Rechercher des utilisateurs</h2>
+        <div class="form-group">
+            <input type="text" name="search_term" placeholder="Nom d'utilisateur" required>
+            <button type="submit" class="btn">Rechercher</button>
+        </div>
+    </form>
+
+    {% if results %}
+    <div class="search-results">
+        <h3>Résultats de la recherche</h3>
+        <ul>
+            {% for user in results %}
+                <li>
+                    <span>{{ user.username }}</span>
+                    <p>{{ user.bio }}</p>
+                    <a href="{{ url_for('add_friend', friend_id=user.id) }}" class="btn">Ajouter comme ami</a>
+                </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+{% endblock %}
