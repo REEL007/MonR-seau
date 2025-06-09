@@ -1,42 +1,120 @@
-from flask import Flask, request, redirect, url_for, flash, session
+from flask import Flask, request, session, redirect, url_for, flash, g
 from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime
-import os
 import sqlite3
+import os
 
 app = Flask(__name__)
-app.secret_key = 'votre_cle_secrete_super_secrete'
+app.secret_key = 'ton_secret_key_ici'
+DATABASE = 'database.db'
 
-# Configuration DB
-DATABASE = 'social_network.db'
+# Style CSS commun à toutes les pages
+COMMON_CSS = """
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+        line-height: 1.6;
+    }
+    h1, h2 {
+        color: #333;
+    }
+    form {
+        margin: 20px 0;
+    }
+    input, textarea, button {
+        padding: 8px;
+        margin: 5px 0;
+    }
+    button {
+        background: #007bff;
+        color: white;
+        border: none;
+        cursor: pointer;
+    }
+    button:hover {
+        background: #0056b3;
+    }
+    .flash-message {
+        padding: 10px;
+        margin: 10px 0;
+        border-radius: 4px;
+    }
+    .success {
+        background: #d4edda;
+        color: #155724;
+    }
+    .error {
+        background: #f8d7da;
+        color: #721c24;
+    }
+    .info {
+        background: #e2e3e5;
+        color: #383d41;
+    }
+    ul {
+        list-style: none;
+        padding: 0;
+    }
+    li {
+        padding: 8px;
+        border-bottom: 1px solid #eee;
+    }
+    .conversation {
+        border: 1px solid #ccc;
+        padding: 10px;
+        height: 300px;
+        overflow-y: scroll;
+        margin-bottom: 10px;
+    }
+</style>
+"""
 
 def get_db():
-    db = sqlite3.connect(DATABASE)
-    db.row_factory = sqlite3.Row
+    db = getattr(g, '_database', None)
+    if db is None:
+        db = g._database = sqlite3.connect(DATABASE)
+        db.row_factory = sqlite3.Row
     return db
+
+@app.teardown_appcontext
+def close_connection(exception):
+    db = getattr(g, '_database', None)
+    if db is not None:
+        db.close()
 
 def init_db():
     with app.app_context():
         db = get_db()
-        db.execute('''CREATE TABLE IF NOT EXISTS users (
+        cursor = db.cursor()
+        
+        # Création des tables
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,
-            email TEXT UNIQUE NOT NULL,
             password TEXT NOT NULL,
-            bio TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )''')
-        db.execute('''CREATE TABLE IF NOT EXISTS friendships (
+            bio TEXT
+        )
+        ''')
+        
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS friendships (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
             friend_id INTEGER NOT NULL,
-            status TEXT NOT NULL, -- 'pending', 'accepted', 'rejected'
+            status TEXT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users (id),
             FOREIGN KEY (friend_id) REFERENCES users (id),
-            UNIQUE (user_id, friend_id)
-        )''')
-        db.execute('''CREATE TABLE IF NOT EXISTS messages (
+            CHECK (user_id != friend_id),
+            CHECK (status IN ('pending', 'accepted', 'rejected'))
+        )
+        ''')
+        
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             sender_id INTEGER NOT NULL,
             receiver_id INTEGER NOT NULL,
@@ -45,10 +123,11 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (sender_id) REFERENCES users (id),
             FOREIGN KEY (receiver_id) REFERENCES users (id)
-        )''')
+        )
+        ''')
+        
         db.commit()
 
-# Routes
 @app.route('/')
 def index():
     if 'user_id' not in session:
@@ -57,249 +136,83 @@ def index():
     db = get_db()
     user = db.execute('SELECT * FROM users WHERE id = ?', (session['user_id'],)).fetchone()
     
-    # Récupérer les amis
-    friends = db.execute('''
-    SELECT users.id, users.username FROM users 
-    JOIN friendships ON (friendships.friend_id = users.id AND friendships.user_id = ? AND friendships.status = 'accepted')
-    OR (friendships.user_id = users.id AND friendships.friend_id = ? AND friendships.status = 'accepted')
-    ''', (session['user_id'], session['user_id'])).fetchall()
-    
-    # Récupérer les demandes d'amis reçues
-    friend_requests = db.execute('''
-    SELECT users.id, users.username FROM users 
-    JOIN friendships ON friendships.user_id = users.id 
-    WHERE friendships.friend_id = ? AND friendships.status = 'pending'
-    ''', (session['user_id'],)).fetchall()
-    
-    # Récupérer les messages non lus
-    unread_messages = db.execute('''
-    SELECT COUNT(*) as count FROM messages 
-    WHERE receiver_id = ? AND is_read = FALSE
-    ''', (session['user_id'],)).fetchone()['count']
-    
-    # Générer le HTML directement
-    html = f"""
+    return f"""
     <!DOCTYPE html>
     <html>
     <head>
         <title>Accueil</title>
+        {COMMON_CSS}
     </head>
     <body>
-        <h1>Bienvenue {user['username']}</h1>
-        <p>Bio: {user.get('bio', '')}</p>
+        <h1>Bienvenue, {user['username']}!</h1>
         
-        <h2>Vos amis ({len(friends)})</h2>
-        <ul>
-            {''.join(f'<li>{friend["username"]} <a href="/messages?friend_id={friend["id"]}">Message</a></li>' for friend in friends)}
-        </ul>
+        <!-- Affichage des messages flash -->
+        {'<div class="flash-message ' + category + '">' + message + '</div>' 
+         for category, message in get_flashed_messages(with_categories=True)}
         
-        <h2>Demandes d'amis ({len(friend_requests)})</h2>
-        <ul>
-            {''.join(f'<li>{req["username"]} <a href="/accept_friend/{req["id"]}">Accepter</a></li>' for req in friend_requests)}
-        </ul>
+        <nav>
+            <ul>
+                <li><a href="/profile">Mon profil</a></li>
+                <li><a href="/friends">Amis</a></li>
+                <li><a href="/search">Rechercher des amis</a></li>
+                <li><a href="/logout">Déconnexion</a></li>
+            </ul>
+        </nav>
         
-        <p><a href="/profile">Profil</a> | <a href="/search">Recherche</a> | <a href="/friends">Amis</a> | <a href="/messages">Messages ({unread_messages} non lus)</a> | <a href="/logout">Déconnexion</a></p>
+        <h2>Dernières activités</h2>
+        <p>Contenu de la page d'accueil...</p>
     </body>
     </html>
     """
-    return html
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
         username = request.form['username']
-        email = request.form['email']
         password = request.form['password']
-        confirm_password = request.form['confirm_password']
-        
-        if password != confirm_password:
-            flash('Les mots de passe ne correspondent pas', 'error')
-            return redirect(url_for('register'))
-        
-        hashed_password = generate_password_hash(password)
         
         db = get_db()
-        try:
-            db.execute('INSERT INTO users (username, email, password) VALUES (?, ?, ?)',
-                      (username, email, hashed_password))
+        error = None
+        
+        if not username:
+            error = 'Un nom d\'utilisateur est requis'
+        elif not password:
+            error = 'Un mot de passe est requis'
+        elif db.execute('SELECT id FROM users WHERE username = ?', (username,)).fetchone() is not None:
+            error = f"L'utilisateur {username} existe déjà."
+        
+        if error is None:
+            db.execute(
+                'INSERT INTO users (username, password) VALUES (?, ?)',
+                (username, generate_password_hash(password))
             db.commit()
             flash('Inscription réussie! Vous pouvez maintenant vous connecter.', 'success')
             return redirect(url_for('login'))
-        except sqlite3.IntegrityError:
-            flash('Nom d\'utilisateur ou email déjà utilisé', 'error')
-            return redirect(url_for('register'))
+        
+        flash(error, 'error')
     
-    # HTML intégré avec CSS inline
-    return """
+    return f"""
     <!DOCTYPE html>
-    <html lang="fr">
+    <html>
     <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>MonRéseau - Inscription</title>
-        <style>
-            * {
-                margin: 0;
-                padding: 0;
-                box-sizing: border-box;
-                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            }
-            body {
-                background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-                min-height: 100vh;
-                display: flex;
-                flex-direction: column;
-                justify-content: center;
-                align-items: center;
-                padding: 2rem;
-            }
-            .auth-form {
-                background: white;
-                padding: 2.5rem;
-                border-radius: 15px;
-                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-                width: 100%;
-                max-width: 450px;
-                transition: transform 0.3s ease, box-shadow 0.3s ease;
-            }
-            .auth-form:hover {
-                transform: translateY(-5px);
-                box-shadow: 0 15px 35px rgba(0, 0, 0, 0.12);
-            }
-            .auth-form h2 {
-                color: #4a6fa5;
-                margin-bottom: 1.5rem;
-                text-align: center;
-                font-size: 1.8rem;
-                font-weight: 600;
-            }
-            .form-group {
-                margin-bottom: 1.5rem;
-            }
-            .form-group label {
-                display: block;
-                margin-bottom: 0.5rem;
-                color: #555;
-                font-size: 0.95rem;
-                font-weight: 500;
-            }
-            .form-group input {
-                width: 100%;
-                padding: 12px 15px;
-                border: 2px solid #e0e6ed;
-                border-radius: 8px;
-                font-size: 1rem;
-                transition: all 0.3s ease;
-                background-color: #f8fafc;
-            }
-            .form-group input:focus {
-                border-color: #4a6fa5;
-                box-shadow: 0 0 0 3px rgba(74, 111, 165, 0.2);
-                outline: none;
-                background-color: white;
-            }
-            .btn {
-                width: 100%;
-                padding: 12px;
-                background: linear-gradient(to right, #4a6fa5, #6b8cce);
-                color: white;
-                border: none;
-                border-radius: 8px;
-                font-size: 1rem;
-                font-weight: 600;
-                cursor: pointer;
-                transition: all 0.3s ease;
-                margin-top: 0.5rem;
-            }
-            .btn:hover {
-                background: linear-gradient(to right, #3a5a8f, #5a7bbe);
-                transform: translateY(-2px);
-                box-shadow: 0 5px 15px rgba(74, 111, 165, 0.3);
-            }
-            .auth-form p {
-                text-align: center;
-                margin-top: 1.5rem;
-                color: #666;
-                font-size: 0.95rem;
-            }
-            .auth-form a {
-                color: #4a6fa5;
-                text-decoration: none;
-                font-weight: 500;
-                transition: color 0.2s ease;
-            }
-            .auth-form a:hover {
-                color: #3a5a8f;
-                text-decoration: underline;
-            }
-            footer {
-                margin-top: 2rem;
-                text-align: center;
-                color: #888;
-                font-size: 0.9rem;
-            }
-            .flash-messages {
-                width: 100%;
-                max-width: 450px;
-                margin-bottom: 1rem;
-            }
-            .flash-error {
-                background-color: #ffebee;
-                color: #c62828;
-                padding: 10px 15px;
-                border-radius: 8px;
-                margin-bottom: 10px;
-                border-left: 4px solid #c62828;
-            }
-            .flash-success {
-                background-color: #e8f5e9;
-                color: #2e7d32;
-                padding: 10px 15px;
-                border-radius: 8px;
-                margin-bottom: 10px;
-                border-left: 4px solid #2e7d32;
-            }
-        </style>
+        <title>Inscription</title>
+        {COMMON_CSS}
     </head>
     <body>
-        <div class="flash-messages">
-            {% with messages = get_flashed_messages(with_categories=true) %}
-                {% if messages %}
-                    {% for category, message in messages %}
-                        <div class="flash-{{ category }}">{{ message }}</div>
-                    {% endfor %}
-                {% endif %}
-            {% endwith %}
-        </div>
+        <h1>Inscription</h1>
         
-        <form method="POST" class="auth-form">
-            <h2>Inscription</h2>
-            <div class="form-group">
-                <label for="username">Nom d'utilisateur:</label>
-                <input type="text" id="username" name="username" required>
-            </div>
-            <div class="form-group">
-                <label for="email">Email:</label>
-                <input type="email" id="email" name="email" required>
-            </div>
-            <div class="form-group">
-                <label for="password">Mot de passe:</label>
-                <input type="password" id="password" name="password" required>
-            </div>
-            <div class="form-group">
-                <label for="confirm_password">Confirmez le mot de passe:</label>
-                <input type="password" id="confirm_password" name="confirm_password" required>
-            </div>
-            <button type="submit" class="btn">S'inscrire</button>
-            <p>Déjà un compte? <a href="/login">Connectez-vous ici</a></p>
+        {'<div class="flash-message ' + category + '">' + message + '</div>' 
+         for category, message in get_flashed_messages(with_categories=True)}
+        
+        <form method="POST">
+            <p>Nom d'utilisateur: <input type="text" name="username" required></p>
+            <p>Mot de passe: <input type="password" name="password" required></p>
+            <button type="submit">S'inscrire</button>
         </form>
-        <footer>
-            <p>Mini Réseau Social</p>
-        </footer>
+        <p>Déjà un compte? <a href="/login">Connectez-vous</a></p>
     </body>
     </html>
     """
-
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -319,14 +232,19 @@ def login():
             flash('Nom d\'utilisateur ou mot de passe incorrect', 'error')
             return redirect(url_for('login'))
     
-    return """
+    return f"""
     <!DOCTYPE html>
     <html>
     <head>
         <title>Connexion</title>
+        {COMMON_CSS}
     </head>
     <body>
         <h1>Connexion</h1>
+        
+        {'<div class="flash-message ' + category + '">' + message + '</div>' 
+         for category, message in get_flashed_messages(with_categories=True)}
+        
         <form method="POST">
             <p>Nom d'utilisateur: <input type="text" name="username" required></p>
             <p>Mot de passe: <input type="password" name="password" required></p>
@@ -364,9 +282,14 @@ def profile():
     <html>
     <head>
         <title>Profil</title>
+        {COMMON_CSS}
     </head>
     <body>
         <h1>Profil de {user['username']}</h1>
+        
+        {'<div class="flash-message ' + category + '">' + message + '</div>' 
+         for category, message in get_flashed_messages(with_categories=True)}
+        
         <form method="POST">
             <p>Bio:</p>
             <textarea name="bio" rows="4" cols="50">{user.get('bio', '')}</textarea>
@@ -393,14 +316,19 @@ def search():
         WHERE username LIKE ? AND id != ?
         ''', (search_term, session['user_id'])).fetchall()
     
-    html = """
+    html = f"""
     <!DOCTYPE html>
     <html>
     <head>
         <title>Recherche</title>
+        {COMMON_CSS}
     </head>
     <body>
         <h1>Rechercher des amis</h1>
+        
+        {'<div class="flash-message ' + category + '">' + message + '</div>' 
+         for category, message in get_flashed_messages(with_categories=True)}
+        
         <form method="POST">
             <input type="text" name="search_term" placeholder="Nom d'utilisateur" required>
             <button type="submit">Rechercher</button>
@@ -504,14 +432,18 @@ def friends():
     WHERE friendships.friend_id = ? AND friendships.status = 'pending'
     ''', (session['user_id'],)).fetchall()
     
-    html = """
+    html = f"""
     <!DOCTYPE html>
     <html>
     <head>
         <title>Amis</title>
+        {COMMON_CSS}
     </head>
     <body>
         <h1>Vos amis</h1>
+        
+        {'<div class="flash-message ' + category + '">' + message + '</div>' 
+         for category, message in get_flashed_messages(with_categories=True)}
         
         <h2>Amis ({len(friends)})</h2>
         <ul>
@@ -599,14 +531,18 @@ def messages():
                 current_friend_name = friend['username']
                 break
     
-    html = """
+    html = f"""
     <!DOCTYPE html>
     <html>
     <head>
         <title>Messages</title>
+        {COMMON_CSS}
     </head>
     <body>
         <h1>Messages</h1>
+        
+        {'<div class="flash-message ' + category + '">' + message + '</div>' 
+         for category, message in get_flashed_messages(with_categories=True)}
         
         <div style="display: flex;">
             <div style="width: 30%;">
@@ -631,7 +567,7 @@ def messages():
     if friend_id:
         html += f"""
                 <h2>Conversation avec {current_friend_name}</h2>
-                <div style="border: 1px solid #ccc; padding: 10px; height: 300px; overflow-y: scroll;">
+                <div class="conversation">
         """
         
         for msg in messages:
