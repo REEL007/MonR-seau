@@ -3,52 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mini Réseau Social</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
-            margin: 0;
-            padding: 20px;
-        }
-        header {
-            background-color: #2c3e50;
-            color: white;
-            padding: 10px;
-            margin-bottom: 20px;
-        }
-        nav {
-            display: flex;
-            gap: 15px;
-            margin-bottom: 10px;
-        }
-        nav a {
-            color: white;
-            text-decoration: none;
-        }
-        .flash-messages {
-            margin-bottom: 20px;
-        }
-        .flash {
-            padding: 10px;
-            margin-bottom: 10px;
-            border-radius: 4px;
-        }
-        .success {
-            background-color: #d4edda;
-            color: #155724;
-        }
-        .error {
-            background-color: #f8d7da;
-            color: #721c24;
-        }
-        footer {
-            margin-top: 20px;
-            text-align: center;
-            padding: 10px;
-            background-color: #f5f5f5;
-        }
-    </style>
+    <title>MonRéseau - {% block title %}{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
     <header>
