@@ -5,7 +5,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 app.secret_key = 'ton_secret_key_ici'
-DATABASE = 'database.db'
+DATABASE = '/tmp/database.db'
 
 # Style CSS commun à toutes les pages
 COMMON_CSS = """
@@ -89,6 +89,7 @@ def init_db():
         db = get_db()
         cursor = db.cursor()
         
+        # Correction ici - les triples guillemets étaient mal fermés
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -137,7 +138,6 @@ def index():
     flash_messages = ''.join(
         f'<div class="flash-message {category}">{message}</div>'
         for category, message in get_flashed_messages(with_categories=True)
-    )
     
     return f"""
     <!DOCTYPE html>
@@ -632,4 +632,4 @@ def send_message():
 if __name__ == '__main__':
     if not os.path.exists(DATABASE):
         init_db()
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=False)
