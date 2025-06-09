@@ -1,33 +1,13 @@
-"""
-Mini Réseau Social avec Flask
-
-Fonctionnalités:
-- Inscription (nom d'utilisateur, email, mot de passe hashé)
-- Connexion/Déconnexion
-- Profil utilisateur avec biographie modifiable
-- Recherche d'autres utilisateurs
-- Système d'amis (demandes d'amis, acceptation)
-- Messagerie privée entre amis
-
-Base de données: SQLite
-Interface: HTML/CSS basique
-
-Pour exécuter:
-1. pip install -r requirements.txt
-2. python app.py
-3. Accédez à http://localhost:5000
-"""
-
 from flask import Flask, render_template, request, redirect, url_for, flash, session
 from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
 from datetime import datetime
 import os
 
-app = Flask(__name__)
+app = Flask(__name__)  # Pas de dossiers static/templates
 app.secret_key = 'votre_cle_secrete_super_secrete'
 
-# Configuration de la base de données
+# Configuration DB
 DATABASE = 'social_network.db'
 
 def get_db():
@@ -38,50 +18,17 @@ def get_db():
 def init_db():
     with app.app_context():
         db = get_db()
-        # Création des tables si elles n'existent pas
-        db.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            email TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL,
-            bio TEXT DEFAULT '',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        ''')
-        
-        db.execute('''
-        CREATE TABLE IF NOT EXISTS friendships (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            friend_id INTEGER NOT NULL,
-            status TEXT NOT NULL, -- 'pending' or 'accepted'
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users (id),
-            FOREIGN KEY (friend_id) REFERENCES users (id),
-            UNIQUE(user_id, friend_id)
-        )
-        ''')
-        
-        db.execute('''
-        CREATE TABLE IF NOT EXISTS messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            sender_id INTEGER NOT NULL,
-            receiver_id INTEGER NOT NULL,
-            content TEXT NOT NULL,
-            is_read BOOLEAN DEFAULT FALSE,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (sender_id) REFERENCES users (id),
-            FOREIGN KEY (receiver_id) REFERENCES users (id)
-        )
-        ''')
+        db.execute('''CREATE TABLE IF NOT EXISTS users (...)''')  # Gardez votre schéma original
+        db.execute('''CREATE TABLE IF NOT EXISTS friendships (...)''')
+        db.execute('''CREATE TABLE IF NOT EXISTS messages (...)''')
         db.commit()
 
-# Routes de l'application
+# Routes (conservées inchangées sauf les templates)
 @app.route('/')
 def index():
     if 'user_id' not in session:
         return redirect(url_for('login'))
+    return render_template('index.html', ...)
     
     db = get_db()
     user = db.execute('SELECT * FROM users WHERE id = ?', (session['user_id'],)).fetchone()
