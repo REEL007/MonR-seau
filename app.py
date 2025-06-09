@@ -1,7 +1,7 @@
-from flask import Flask, request, session, redirect, url_for, flash, g
-from werkzeug.security import generate_password_hash, check_password_hash
+from flask import Flask, request, session, redirect, url_for, flash, g, get_flashed_messages
 import sqlite3
 import os
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 app.secret_key = 'ton_secret_key_ici'
@@ -89,7 +89,6 @@ def init_db():
         db = get_db()
         cursor = db.cursor()
         
-        # Création des tables
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -110,7 +109,6 @@ def init_db():
             FOREIGN KEY (friend_id) REFERENCES users (id),
             CHECK (user_id != friend_id),
             CHECK (status IN ('pending', 'accepted', 'rejected'))
-        )
         ''')
         
         cursor.execute('''
@@ -136,6 +134,11 @@ def index():
     db = get_db()
     user = db.execute('SELECT * FROM users WHERE id = ?', (session['user_id'],)).fetchone()
     
+    flash_messages = ''.join(
+        f'<div class="flash-message {category}">{message}</div>'
+        for category, message in get_flashed_messages(with_categories=True)
+    )
+    
     return f"""
     <!DOCTYPE html>
     <html>
@@ -145,11 +148,7 @@ def index():
     </head>
     <body>
         <h1>Bienvenue, {user['username']}!</h1>
-        
-        <!-- Affichage des messages flash -->
-        {'<div class="flash-message ' + category + '">' + message + '</div>' 
-         for category, message in get_flashed_messages(with_categories=True)}
-        
+        {flash_messages}
         <nav>
             <ul>
                 <li><a href="/profile">Mon profil</a></li>
@@ -158,7 +157,6 @@ def index():
                 <li><a href="/logout">Déconnexion</a></li>
             </ul>
         </nav>
-        
         <h2>Dernières activités</h2>
         <p>Contenu de la page d'accueil...</p>
     </body>
@@ -184,12 +182,17 @@ def register():
         if error is None:
             db.execute(
                 'INSERT INTO users (username, password) VALUES (?, ?)',
-                (username, generate_password_hash(password))
+                (username, generate_password_hash(password)))
             db.commit()
             flash('Inscription réussie! Vous pouvez maintenant vous connecter.', 'success')
             return redirect(url_for('login'))
         
         flash(error, 'error')
+    
+    flash_messages = ''.join(
+        f'<div class="flash-message {category}">{message}</div>'
+        for category, message in get_flashed_messages(with_categories=True)
+    )
     
     return f"""
     <!DOCTYPE html>
@@ -200,10 +203,7 @@ def register():
     </head>
     <body>
         <h1>Inscription</h1>
-        
-        {'<div class="flash-message ' + category + '">' + message + '</div>' 
-         for category, message in get_flashed_messages(with_categories=True)}
-        
+        {flash_messages}
         <form method="POST">
             <p>Nom d'utilisateur: <input type="text" name="username" required></p>
             <p>Mot de passe: <input type="password" name="password" required></p>
@@ -232,6 +232,11 @@ def login():
             flash('Nom d\'utilisateur ou mot de passe incorrect', 'error')
             return redirect(url_for('login'))
     
+    flash_messages = ''.join(
+        f'<div class="flash-message {category}">{message}</div>'
+        for category, message in get_flashed_messages(with_categories=True)
+    )
+    
     return f"""
     <!DOCTYPE html>
     <html>
@@ -241,10 +246,7 @@ def login():
     </head>
     <body>
         <h1>Connexion</h1>
-        
-        {'<div class="flash-message ' + category + '">' + message + '</div>' 
-         for category, message in get_flashed_messages(with_categories=True)}
-        
+        {flash_messages}
         <form method="POST">
             <p>Nom d'utilisateur: <input type="text" name="username" required></p>
             <p>Mot de passe: <input type="password" name="password" required></p>
@@ -277,6 +279,11 @@ def profile():
     
     user = db.execute('SELECT * FROM users WHERE id = ?', (session['user_id'],)).fetchone()
     
+    flash_messages = ''.join(
+        f'<div class="flash-message {category}">{message}</div>'
+        for category, message in get_flashed_messages(with_categories=True)
+    )
+    
     return f"""
     <!DOCTYPE html>
     <html>
@@ -286,10 +293,7 @@ def profile():
     </head>
     <body>
         <h1>Profil de {user['username']}</h1>
-        
-        {'<div class="flash-message ' + category + '">' + message + '</div>' 
-         for category, message in get_flashed_messages(with_categories=True)}
-        
+        {flash_messages}
         <form method="POST">
             <p>Bio:</p>
             <textarea name="bio" rows="4" cols="50">{user.get('bio', '')}</textarea>
@@ -316,6 +320,11 @@ def search():
         WHERE username LIKE ? AND id != ?
         ''', (search_term, session['user_id'])).fetchall()
     
+    flash_messages = ''.join(
+        f'<div class="flash-message {category}">{message}</div>'
+        for category, message in get_flashed_messages(with_categories=True)
+    )
+    
     html = f"""
     <!DOCTYPE html>
     <html>
@@ -325,10 +334,7 @@ def search():
     </head>
     <body>
         <h1>Rechercher des amis</h1>
-        
-        {'<div class="flash-message ' + category + '">' + message + '</div>' 
-         for category, message in get_flashed_messages(with_categories=True)}
-        
+        {flash_messages}
         <form method="POST">
             <input type="text" name="search_term" placeholder="Nom d'utilisateur" required>
             <button type="submit">Rechercher</button>
@@ -361,7 +367,6 @@ def add_friend(friend_id):
     
     db = get_db()
     
-    # Vérifier si la demande d'ami existe déjà
     existing = db.execute('''
     SELECT * FROM friendships 
     WHERE (user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)
@@ -386,7 +391,6 @@ def accept_friend(friend_id):
     
     db = get_db()
     
-    # Vérifier que la demande existe et est en attente
     request_exists = db.execute('''
     SELECT * FROM friendships 
     WHERE user_id = ? AND friend_id = ? AND status = 'pending'
@@ -411,26 +415,28 @@ def friends():
     
     db = get_db()
     
-    # Amis acceptés
     friends = db.execute('''
     SELECT users.id, users.username FROM users 
     JOIN friendships ON (friendships.friend_id = users.id AND friendships.user_id = ? AND friendships.status = 'accepted')
     OR (friendships.user_id = users.id AND friendships.friend_id = ? AND friendships.status = 'accepted')
     ''', (session['user_id'], session['user_id'])).fetchall()
     
-    # Demandes envoyées en attente
     sent_requests = db.execute('''
     SELECT users.id, users.username FROM users 
     JOIN friendships ON friendships.friend_id = users.id 
     WHERE friendships.user_id = ? AND friendships.status = 'pending'
     ''', (session['user_id'],)).fetchall()
     
-    # Demandes reçues en attente
     received_requests = db.execute('''
     SELECT users.id, users.username FROM users 
     JOIN friendships ON friendships.user_id = users.id 
     WHERE friendships.friend_id = ? AND friendships.status = 'pending'
     ''', (session['user_id'],)).fetchall()
+    
+    flash_messages = ''.join(
+        f'<div class="flash-message {category}">{message}</div>'
+        for category, message in get_flashed_messages(with_categories=True)
+    )
     
     html = f"""
     <!DOCTYPE html>
@@ -441,10 +447,7 @@ def friends():
     </head>
     <body>
         <h1>Vos amis</h1>
-        
-        {'<div class="flash-message ' + category + '">' + message + '</div>' 
-         for category, message in get_flashed_messages(with_categories=True)}
-        
+        {flash_messages}
         <h2>Amis ({len(friends)})</h2>
         <ul>
     """
@@ -459,7 +462,6 @@ def friends():
     
     html += """
         </ul>
-        
         <h2>Demandes envoyées ({len(sent_requests)})</h2>
         <ul>
     """
@@ -469,7 +471,6 @@ def friends():
     
     html += """
         </ul>
-        
         <h2>Demandes reçues ({len(received_requests)})</h2>
         <ul>
     """
@@ -499,7 +500,6 @@ def messages():
     db = get_db()
     friend_id = request.args.get('friend_id', type=int)
     
-    # Liste des amis pour le menu
     friends = db.execute('''
     SELECT users.id, users.username FROM users 
     JOIN friendships ON (friendships.friend_id = users.id AND friendships.user_id = ? AND friendships.status = 'accepted')
@@ -508,14 +508,12 @@ def messages():
     
     messages = []
     if friend_id:
-        # Marquer les messages comme lus
         db.execute('''
         UPDATE messages SET is_read = TRUE 
         WHERE sender_id = ? AND receiver_id = ? AND is_read = FALSE
         ''', (friend_id, session['user_id']))
         db.commit()
         
-        # Récupérer la conversation
         messages = db.execute('''
         SELECT m.*, u.username as sender_name FROM messages m
         JOIN users u ON m.sender_id = u.id
@@ -523,13 +521,17 @@ def messages():
         ORDER BY m.created_at
         ''', (session['user_id'], friend_id, friend_id, session['user_id'])).fetchall()
     
-    # Trouver le nom de l'ami actuel
     current_friend_name = None
     if friend_id:
         for friend in friends:
             if friend['id'] == friend_id:
                 current_friend_name = friend['username']
                 break
+    
+    flash_messages = ''.join(
+        f'<div class="flash-message {category}">{message}</div>'
+        for category, message in get_flashed_messages(with_categories=True)
+    )
     
     html = f"""
     <!DOCTYPE html>
@@ -540,10 +542,7 @@ def messages():
     </head>
     <body>
         <h1>Messages</h1>
-        
-        {'<div class="flash-message ' + category + '">' + message + '</div>' 
-         for category, message in get_flashed_messages(with_categories=True)}
-        
+        {flash_messages}
         <div style="display: flex;">
             <div style="width: 30%;">
                 <h2>Amis</h2>
@@ -560,7 +559,6 @@ def messages():
     html += """
                 </ul>
             </div>
-            
             <div style="width: 70%;">
     """
     
@@ -580,7 +578,6 @@ def messages():
         
         html += """
                 </div>
-                
                 <form method="POST" action="/send_message">
                     <input type="hidden" name="friend_id" value="{friend_id}">
                     <textarea name="content" rows="3" style="width: 100%;" required></textarea>
@@ -593,7 +590,6 @@ def messages():
     html += """
             </div>
         </div>
-        
         <p><a href="/">Retour à l'accueil</a></p>
     </body>
     </html>
@@ -615,7 +611,6 @@ def send_message():
     
     db = get_db()
     
-    # Vérifier que les utilisateurs sont amis
     are_friends = db.execute('''
     SELECT * FROM friendships 
     WHERE ((user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)) 
