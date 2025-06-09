@@ -1,2 +1,4 @@
-flask
-werkzeug
+flask==2.3.2
+werkzeug==2.3.7
+sqlite3
+python-dotenv
