@@ -1,10 +1,10 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session
+from flask import Flask, request, redirect, url_for, flash, session
 from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
 from datetime import datetime
 import os
 
-app = Flask(__name__)  # Pas de dossiers static/templates
+app = Flask(__name__)
 app.secret_key = 'votre_cle_secrete_super_secrete'
 
 # Configuration DB
@@ -18,17 +18,41 @@ def get_db():
 def init_db():
     with app.app_context():
         db = get_db()
-        db.execute('''CREATE TABLE IF NOT EXISTS users (...)''')  # Gardez votre schéma original
-        db.execute('''CREATE TABLE IF NOT EXISTS friendships (...)''')
-        db.execute('''CREATE TABLE IF NOT EXISTS messages (...)''')
+        db.execute('''CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL,
+            bio TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+        db.execute('''CREATE TABLE IF NOT EXISTS friendships (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            friend_id INTEGER NOT NULL,
+            status TEXT NOT NULL, -- 'pending', 'accepted', 'rejected'
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users (id),
+            FOREIGN KEY (friend_id) REFERENCES users (id),
+            UNIQUE (user_id, friend_id)
+        )''')
+        db.execute('''CREATE TABLE IF NOT EXISTS messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sender_id INTEGER NOT NULL,
+            receiver_id INTEGER NOT NULL,
+            content TEXT NOT NULL,
+            is_read BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (sender_id) REFERENCES users (id),
+            FOREIGN KEY (receiver_id) REFERENCES users (id)
+        )''')
         db.commit()
 
-# Routes (conservées inchangées sauf les templates)
+# Routes
 @app.route('/')
 def index():
     if 'user_id' not in session:
         return redirect(url_for('login'))
-    return render_template('index.html', ...)
     
     db = get_db()
     user = db.execute('SELECT * FROM users WHERE id = ?', (session['user_id'],)).fetchone()
@@ -53,7 +77,32 @@ def index():
     WHERE receiver_id = ? AND is_read = FALSE
     ''', (session['user_id'],)).fetchone()['count']
     
-    return render_template('index.html', user=user, friends=friends, friend_requests=friend_requests, unread_messages=unread_messages)
+    # Générer le HTML directement
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Accueil</title>
+    </head>
+    <body>
+        <h1>Bienvenue {user['username']}</h1>
+        <p>Bio: {user.get('bio', '')}</p>
+        
+        <h2>Vos amis ({len(friends)})</h2>
+        <ul>
+            {''.join(f'<li>{friend["username"]} <a href="/messages?friend_id={friend["id"]}">Message</a></li>' for friend in friends)}
+        </ul>
+        
+        <h2>Demandes d'amis ({len(friend_requests)})</h2>
+        <ul>
+            {''.join(f'<li>{req["username"]} <a href="/accept_friend/{req["id"]}">Accepter</a></li>' for req in friend_requests)}
+        </ul>
+        
+        <p><a href="/profile">Profil</a> | <a href="/search">Recherche</a> | <a href="/friends">Amis</a> | <a href="/messages">Messages ({unread_messages} non lus)</a> | <a href="/logout">Déconnexion</a></p>
+    </body>
+    </html>
+    """
+    return html
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -80,7 +129,25 @@ def register():
             flash('Nom d\'utilisateur ou email déjà utilisé', 'error')
             return redirect(url_for('register'))
     
-    return render_template('register.html')
+    return """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Inscription</title>
+    </head>
+    <body>
+        <h1>Inscription</h1>
+        <form method="POST">
+            <p>Nom d'utilisateur: <input type="text" name="username" required></p>
+            <p>Email: <input type="email" name="email" required></p>
+            <p>Mot de passe: <input type="password" name="password" required></p>
+            <p>Confirmer mot de passe: <input type="password" name="confirm_password" required></p>
+            <button type="submit">S'inscrire</button>
+        </form>
+        <p>Déjà un compte? <a href="/login">Connectez-vous</a></p>
+    </body>
+    </html>
+    """
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -100,7 +167,23 @@ def login():
             flash('Nom d\'utilisateur ou mot de passe incorrect', 'error')
             return redirect(url_for('login'))
     
-    return render_template('login.html')
+    return """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Connexion</title>
+    </head>
+    <body>
+        <h1>Connexion</h1>
+        <form method="POST">
+            <p>Nom d'utilisateur: <input type="text" name="username" required></p>
+            <p>Mot de passe: <input type="password" name="password" required></p>
+            <button type="submit">Se connecter</button>
+        </form>
+        <p>Pas encore de compte? <a href="/register">Inscrivez-vous</a></p>
+    </body>
+    </html>
+    """
 
 @app.route('/logout')
 def logout():
@@ -123,7 +206,25 @@ def profile():
         return redirect(url_for('profile'))
     
     user = db.execute('SELECT * FROM users WHERE id = ?', (session['user_id'],)).fetchone()
-    return render_template('profile.html', user=user)
+    
+    return f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Profil</title>
+    </head>
+    <body>
+        <h1>Profil de {user['username']}</h1>
+        <form method="POST">
+            <p>Bio:</p>
+            <textarea name="bio" rows="4" cols="50">{user.get('bio', '')}</textarea>
+            <br>
+            <button type="submit">Mettre à jour</button>
+        </form>
+        <p><a href="/">Retour à l'accueil</a></p>
+    </body>
+    </html>
+    """
 
 @app.route('/search', methods=['GET', 'POST'])
 def search():
@@ -140,7 +241,38 @@ def search():
         WHERE username LIKE ? AND id != ?
         ''', (search_term, session['user_id'])).fetchall()
     
-    return render_template('search.html', results=results)
+    html = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Recherche</title>
+    </head>
+    <body>
+        <h1>Rechercher des amis</h1>
+        <form method="POST">
+            <input type="text" name="search_term" placeholder="Nom d'utilisateur" required>
+            <button type="submit">Rechercher</button>
+        </form>
+    """
+    
+    if results:
+        html += "<h2>Résultats:</h2><ul>"
+        for user in results:
+            html += f"""
+            <li>
+                {user['username']} - {user.get('bio', '')}
+                <a href="/add_friend/{user['id']}">Ajouter comme ami</a>
+            </li>
+            """
+        html += "</ul>"
+    
+    html += """
+        <p><a href="/">Retour à l'accueil</a></p>
+    </body>
+    </html>
+    """
+    
+    return html
 
 @app.route('/add_friend/<int:friend_id>')
 def add_friend(friend_id):
@@ -220,10 +352,60 @@ def friends():
     WHERE friendships.friend_id = ? AND friendships.status = 'pending'
     ''', (session['user_id'],)).fetchall()
     
-    return render_template('friends.html', 
-                         friends=friends, 
-                         sent_requests=sent_requests, 
-                         received_requests=received_requests)
+    html = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Amis</title>
+    </head>
+    <body>
+        <h1>Vos amis</h1>
+        
+        <h2>Amis ({len(friends)})</h2>
+        <ul>
+    """
+    
+    for friend in friends:
+        html += f"""
+            <li>
+                {friend['username']}
+                <a href="/messages?friend_id={friend['id']}">Message</a>
+            </li>
+        """
+    
+    html += """
+        </ul>
+        
+        <h2>Demandes envoyées ({len(sent_requests)})</h2>
+        <ul>
+    """
+    
+    for req in sent_requests:
+        html += f"<li>{req['username']} (en attente)</li>"
+    
+    html += """
+        </ul>
+        
+        <h2>Demandes reçues ({len(received_requests)})</h2>
+        <ul>
+    """
+    
+    for req in received_requests:
+        html += f"""
+            <li>
+                {req['username']}
+                <a href="/accept_friend/{req['id']}">Accepter</a>
+            </li>
+        """
+    
+    html += """
+        </ul>
+        <p><a href="/">Retour à l'accueil</a></p>
+    </body>
+    </html>
+    """
+    
+    return html
 
 @app.route('/messages')
 def messages():
@@ -257,10 +439,79 @@ def messages():
         ORDER BY m.created_at
         ''', (session['user_id'], friend_id, friend_id, session['user_id'])).fetchall()
     
-    return render_template('messages.html', 
-                         friends=friends, 
-                         messages=messages, 
-                         current_friend_id=friend_id)
+    # Trouver le nom de l'ami actuel
+    current_friend_name = None
+    if friend_id:
+        for friend in friends:
+            if friend['id'] == friend_id:
+                current_friend_name = friend['username']
+                break
+    
+    html = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Messages</title>
+    </head>
+    <body>
+        <h1>Messages</h1>
+        
+        <div style="display: flex;">
+            <div style="width: 30%;">
+                <h2>Amis</h2>
+                <ul>
+    """
+    
+    for friend in friends:
+        html += f"""
+                    <li>
+                        <a href="/messages?friend_id={friend['id']}">{friend['username']}</a>
+                    </li>
+        """
+    
+    html += """
+                </ul>
+            </div>
+            
+            <div style="width: 70%;">
+    """
+    
+    if friend_id:
+        html += f"""
+                <h2>Conversation avec {current_friend_name}</h2>
+                <div style="border: 1px solid #ccc; padding: 10px; height: 300px; overflow-y: scroll;">
+        """
+        
+        for msg in messages:
+            html += f"""
+                    <div style="margin-bottom: 10px; {'text-align: right;' if msg['sender_id'] == session['user_id'] else ''}">
+                        <strong>{msg['sender_name']}</strong> ({msg['created_at']})<br>
+                        {msg['content']}
+                    </div>
+            """
+        
+        html += """
+                </div>
+                
+                <form method="POST" action="/send_message">
+                    <input type="hidden" name="friend_id" value="{friend_id}">
+                    <textarea name="content" rows="3" style="width: 100%;" required></textarea>
+                    <button type="submit">Envoyer</button>
+                </form>
+        """
+    else:
+        html += "<p>Sélectionnez un ami pour voir la conversation</p>"
+    
+    html += """
+            </div>
+        </div>
+        
+        <p><a href="/">Retour à l'accueil</a></p>
+    </body>
+    </html>
+    """
+    
+    return html
 
 @app.route('/send_message', methods=['POST'])
 def send_message():
