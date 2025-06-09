@@ -1,7 +1,5 @@
 from flask import Flask, request, redirect, url_for, flash, session
 from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime
-import os
 import sqlite3
 
 app = Flask(__name__)
@@ -121,7 +119,7 @@ def register():
         db = get_db()
         try:
             db.execute('INSERT INTO users (username, email, password) VALUES (?, ?, ?)',
-                       (username, email, hashed_password))
+                      (username, email, hashed_password))
             db.commit()
             flash('Inscription réussie! Vous pouvez maintenant vous connecter.', 'success')
             return redirect(url_for('login'))
@@ -129,25 +127,177 @@ def register():
             flash('Nom d\'utilisateur ou email déjà utilisé', 'error')
             return redirect(url_for('register'))
     
+    # HTML intégré avec CSS inline
     return """
     <!DOCTYPE html>
-    <html>
+    <html lang="fr">
     <head>
-        <title>Inscription</title>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>MonRéseau - Inscription</title>
+        <style>
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            }
+            body {
+                background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+                min-height: 100vh;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                padding: 2rem;
+            }
+            .auth-form {
+                background: white;
+                padding: 2.5rem;
+                border-radius: 15px;
+                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+                width: 100%;
+                max-width: 450px;
+                transition: transform 0.3s ease, box-shadow 0.3s ease;
+            }
+            .auth-form:hover {
+                transform: translateY(-5px);
+                box-shadow: 0 15px 35px rgba(0, 0, 0, 0.12);
+            }
+            .auth-form h2 {
+                color: #4a6fa5;
+                margin-bottom: 1.5rem;
+                text-align: center;
+                font-size: 1.8rem;
+                font-weight: 600;
+            }
+            .form-group {
+                margin-bottom: 1.5rem;
+            }
+            .form-group label {
+                display: block;
+                margin-bottom: 0.5rem;
+                color: #555;
+                font-size: 0.95rem;
+                font-weight: 500;
+            }
+            .form-group input {
+                width: 100%;
+                padding: 12px 15px;
+                border: 2px solid #e0e6ed;
+                border-radius: 8px;
+                font-size: 1rem;
+                transition: all 0.3s ease;
+                background-color: #f8fafc;
+            }
+            .form-group input:focus {
+                border-color: #4a6fa5;
+                box-shadow: 0 0 0 3px rgba(74, 111, 165, 0.2);
+                outline: none;
+                background-color: white;
+            }
+            .btn {
+                width: 100%;
+                padding: 12px;
+                background: linear-gradient(to right, #4a6fa5, #6b8cce);
+                color: white;
+                border: none;
+                border-radius: 8px;
+                font-size: 1rem;
+                font-weight: 600;
+                cursor: pointer;
+                transition: all 0.3s ease;
+                margin-top: 0.5rem;
+            }
+            .btn:hover {
+                background: linear-gradient(to right, #3a5a8f, #5a7bbe);
+                transform: translateY(-2px);
+                box-shadow: 0 5px 15px rgba(74, 111, 165, 0.3);
+            }
+            .auth-form p {
+                text-align: center;
+                margin-top: 1.5rem;
+                color: #666;
+                font-size: 0.95rem;
+            }
+            .auth-form a {
+                color: #4a6fa5;
+                text-decoration: none;
+                font-weight: 500;
+                transition: color 0.2s ease;
+            }
+            .auth-form a:hover {
+                color: #3a5a8f;
+                text-decoration: underline;
+            }
+            footer {
+                margin-top: 2rem;
+                text-align: center;
+                color: #888;
+                font-size: 0.9rem;
+            }
+            .flash-messages {
+                width: 100%;
+                max-width: 450px;
+                margin-bottom: 1rem;
+            }
+            .flash-error {
+                background-color: #ffebee;
+                color: #c62828;
+                padding: 10px 15px;
+                border-radius: 8px;
+                margin-bottom: 10px;
+                border-left: 4px solid #c62828;
+            }
+            .flash-success {
+                background-color: #e8f5e9;
+                color: #2e7d32;
+                padding: 10px 15px;
+                border-radius: 8px;
+                margin-bottom: 10px;
+                border-left: 4px solid #2e7d32;
+            }
+        </style>
     </head>
     <body>
-        <h1>Inscription</h1>
-        <form method="POST">
-            <p>Nom d'utilisateur: <input type="text" name="username" required></p>
-            <p>Email: <input type="email" name="email" required></p>
-            <p>Mot de passe: <input type="password" name="password" required></p>
-            <p>Confirmer mot de passe: <input type="password" name="confirm_password" required></p>
-            <button type="submit">S'inscrire</button>
+        <div class="flash-messages">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="flash-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+        </div>
+        
+        <form method="POST" class="auth-form">
+            <h2>Inscription</h2>
+            <div class="form-group">
+                <label for="username">Nom d'utilisateur:</label>
+                <input type="text" id="username" name="username" required>
+            </div>
+            <div class="form-group">
+                <label for="email">Email:</label>
+                <input type="email" id="email" name="email" required>
+            </div>
+            <div class="form-group">
+                <label for="password">Mot de passe:</label>
+                <input type="password" id="password" name="password" required>
+            </div>
+            <div class="form-group">
+                <label for="confirm_password">Confirmez le mot de passe:</label>
+                <input type="password" id="confirm_password" name="confirm_password" required>
+            </div>
+            <button type="submit" class="btn">S'inscrire</button>
+            <p>Déjà un compte? <a href="/login">Connectez-vous ici</a></p>
         </form>
-        <p>Déjà un compte? <a href="/login">Connectez-vous</a></p>
+        <footer>
+            <p>Mini Réseau Social</p>
+        </footer>
     </body>
     </html>
     """
+
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
